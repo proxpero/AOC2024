@@ -8,6 +8,7 @@ let package = Package(
     products: [.library(name: "CoreAOC", targets: ["CoreAOC"])],
     dependencies: [
         .package(url: "https://github.com/JohnSundell/Files", from: "4.0.0"),
+        .package(url: "https://github.com/JohnSundell/ShellOut.git", from: "2.0.0"),
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.3.0"),
         .package(url: "https://github.com/apple/swift-algorithms.git", .upToNextMajor(from: "1.2.0")),
     ],
@@ -17,6 +18,11 @@ let package = Package(
             dependencies: [
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
                 .product(name: "Files", package: "Files"),
+                .product(name: "ShellOut", package: "ShellOut"),
+            ],
+            resources: [
+                .copy("Day.txt"),
+                .copy("Package.txt"),
             ]
         ),
         .target(

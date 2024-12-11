@@ -1,6 +1,7 @@
 import ArgumentParser
 import Files
 import Foundation
+import ShellOut
 
 @main
 struct AOC: ParsableCommand {
@@ -12,70 +13,143 @@ struct AOC: ParsableCommand {
 
 struct Init: ParsableCommand {
     @Argument var day: Int
+    @Option var year: Int?
+
+    @Option(help: "The adventofcode.com \"session\" cookie.")
+    var sessionCookie: String?
+
+    struct Configuration: Codable {
+        var sessionCookie: String?
+    }
 
     func run() throws {
+        print("Creating a package for Day\(day) \(defaultYear)")
         let folder = try Folder.current.createSubfolder(named: "Day\(day)")
-        try folder.createFile(named: "Package.swift", contents: package())
+        let package = try createPackage(in: folder)
         let sources = try folder.createSubfolder(named: "Sources")
-        try sources.createFile(named: "main.swift", contents: main())
-        try sources.createFile(named: "Input")
+        try createMain(in: sources)
+        try createInput(in: sources)
+        print("Done.")
+
+        print("Quitting Xcode.")
+        try shellOut(to: "osascript -e 'quit app \"Xcode\"'")
+        try shellOut(to: "open -g \(package.path)")
     }
 
-    func package() throws -> Data? {
-        """
-        // swift-tools-version: 6.0
-        
-        import PackageDescription
-        
-        let package = Package(
-            name: "Day\(day)",
-            platforms: [.macOS(.v15)],
-            dependencies: [
-                .package(url: "https://github.com/apple/swift-algorithms.git", .upToNextMajor(from: "1.2.0")),
-                .package(path: "../CoreAOC")
-            ],
-            targets: [
-                .executableTarget(
-                    name: "Day\(day)",
-                    dependencies: [
-                        .product(name: "Algorithms", package: "swift-algorithms"),
-                        .product(name: "CoreAOC", package: "CoreAOC")
-                    ],
-                    resources: [.process("Input")]
-                )
-            ]
-        )
-        """.data(using: .utf8)
+    private var configFile: File {
+        let filename = ".config"
+        if !Folder.current.containsFile(named: filename) {
+            do {
+                let config = try Folder.current.createFile(named: filename)
+                return config
+            } catch {
+                fatalError("Could not create configuration file.")
+            }
+        }
+
+        do {
+            return try Folder.current.file(named: filename)
+        } catch {
+            fatalError("Could not find configuration file.")
+        }
     }
 
-    func main() throws -> Data? {
-        #"""
-        import Algorithms
-        import CoreAOC
-        import Foundation
-        
-        var start = CFAbsoluteTimeGetCurrent()
-        
-        var input = try Bundle.module.url(forResource: "Input", withExtension: nil).flatMap {
-            try String(contentsOf: $0, encoding: .utf8)
-        }!
-        
-        // MARK: Parsing
-        
-        print("parsing: \(CFAbsoluteTimeGetCurrent() - start)")
-        start = CFAbsoluteTimeGetCurrent()
-        
-        // MARK: Part 1
-        
-        let p1 = 0
-        
-        print("part 1: \(p1), \(CFAbsoluteTimeGetCurrent() - start)")
-        
-        // MARK: Part 2
-        
-        let p2 = 0
-        
-        print("part 2: \(p2), \(CFAbsoluteTimeGetCurrent() - start)")
-        """#.data(using: .utf8)
+    private var config: Configuration {
+        let data = try! configFile.read()
+        var config: Configuration! = try? JSONDecoder().decode(Configuration.self, from: data)
+        if config == nil {
+            config = Configuration()
+            let data = try! JSONEncoder().encode(config)
+            try! configFile.write(data)
+        }
+        return config
     }
+
+    private func updateSessionCookieIfAvailable() throws {
+        var config = config
+        if let sessionCookie {
+            config.sessionCookie = sessionCookie
+            let data = try JSONEncoder().encode(config)
+            try configFile.write(data)
+        }
+
+        guard let sessionCookie = sessionCookie ?? config.sessionCookie else {
+            print("No session cookie available.")
+            return
+        }
+
+        let cookie = HTTPCookie(properties: [
+            .domain: ".adventofcode.com",
+            .path: "/",
+            .secure: "true",
+            .name: "session",
+            .value: sessionCookie
+        ])!
+
+        HTTPCookieStorage.shared.setCookie(cookie)
+    }
+
+    private var defaultYear: Int {
+        if let year { return year }
+
+        let month = Calendar.current.component(.month, from: Date())
+        var year = Calendar.current.component(.year, from: Date())
+        if month < 12 {
+            year -= 1
+        }
+
+        return year
+    }
+
+    private func fetchInput() -> Data? {
+        try! updateSessionCookieIfAvailable()
+        let url = URL(string: "https://adventofcode.com/\(defaultYear)/day/\(day)/input")!
+        let data: Data
+        do {
+            data = try Data(contentsOf: url)
+        } catch {
+            fatalError("Download failed")
+        }
+
+        if String(decoding: data, as: UTF8.self).contains("Please log in to get your puzzle input.") {
+            fatalError("Authentication failed")
+        }
+
+        return data
+    }
+
+    @discardableResult
+    private func createPackage(in folder: Folder) throws -> File {
+        let url = Bundle.module.url(forResource: "Package", withExtension: "txt")!
+        var data = try Data(contentsOf: url)
+        let contents = String(decoding: data, as: UTF8.self)
+            .replacingOccurrences(of: "{{day}}", with: "\(day)")
+        data = Data(contents.utf8)
+        let file = try folder.createFile(named: "Package.swift", contents: data)
+        return file
+    }
+
+    private func createMain(in folder: Folder) throws {
+        let url = Bundle.module.url(forResource: "Day", withExtension: "txt")!
+        let data = try Data(contentsOf: url)
+        try folder.createFile(named: "main.swift", contents: data)
+    }
+
+    private func createInput(in folder: Folder) throws {
+        try! updateSessionCookieIfAvailable()
+        let url = URL(string: "https://adventofcode.com/\(defaultYear)/day/\(day)/input")!
+        let data: Data
+        do {
+            data = try Data(contentsOf: url)
+        } catch {
+            fatalError("Download failed")
+        }
+
+        if String(decoding: data, as: UTF8.self).contains("Please log in to get your puzzle input.") {
+            fatalError("Authentication failed")
+        }
+
+        try folder.createFile(named: "Input", contents: data)
+    }
+
 }

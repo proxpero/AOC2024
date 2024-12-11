@@ -1,7 +1,6 @@
 import Foundation
 
-var date = Date()
-
+var start = CFAbsoluteTimeGetCurrent()
 let input = try Bundle.module.url(forResource: "Input", withExtension: nil).flatMap {
     try String(contentsOf: $0, encoding: .utf8)
 }!
@@ -15,14 +14,15 @@ let (lhs, rhs) = input
         $0.1.append(Int($1[1])!)
     }
 
-print("parsing: \(-date.timeIntervalSinceNow)")
-date = Date()
+print("parsing: \(CFAbsoluteTimeGetCurrent() - start)")
+start = CFAbsoluteTimeGetCurrent()
 
 let p1 = zip(lhs.sorted(), rhs.sorted())
     .map { abs($0.0 - $0.1) }
     .reduce(into: 0) { $0 += $1 }
 
-print("part 1: \(p1), \(-date.timeIntervalSinceNow)")
+print("part 1: \(p1), \(CFAbsoluteTimeGetCurrent() - start)")
+start = CFAbsoluteTimeGetCurrent()
 
 let counts: [Int: Int] = rhs.reduce(into: [:]) {
     $0[$1, default: 0] += 1
@@ -32,4 +32,4 @@ let p2 = lhs.reduce(into: 0) {
     $0 += (counts[$1] ?? 0) * $1
 }
 
-print("part 2: \(p2), \(-date.timeIntervalSinceNow)")
+print("part 2: \(p2), \(CFAbsoluteTimeGetCurrent() - start)")
